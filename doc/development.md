@@ -8,6 +8,15 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
+## Continuous integration
+
+GitHub Actions runs the locked validation matrix on pull requests, pushes to
+`main`, manual dispatches, and every Monday at 06:17 UTC (`17 6 * * 1`).
+The schedule becomes active after merge and runs from the default branch,
+picking up stable Rust updates without updating `Cargo.lock`. The matrix covers
+stable Rust on Linux, macOS, and Windows, plus Rust 1.85.0 on Linux, including
+tests, packaged installs, and formatting/Clippy checks on stable Linux.
+
 ## Test fixtures
 
 The end-to-end suite in [tests/](../tests/) uses real Cargo compilations against
