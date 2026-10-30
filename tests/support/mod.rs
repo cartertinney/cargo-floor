@@ -29,7 +29,7 @@ use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Child, ChildStderr, Command, Output, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -613,6 +613,10 @@ impl RunningFloor {
 
     pub fn finish(mut self) -> Output {
         self.0.take().unwrap().wait_with_output().unwrap()
+    }
+
+    pub fn take_stderr(&mut self) -> ChildStderr {
+        self.0.as_mut().unwrap().stderr.take().unwrap()
     }
 }
 

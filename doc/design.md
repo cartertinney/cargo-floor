@@ -30,14 +30,16 @@ accurate requirements for downstream consumers.
 3. Enumerate stable, non-yanked releases within each direct registry
    dependency's SemVer compatibility line, preserving existing upper bounds
    and dependency attributes.
-4. Probe releases oldest first, pinning only the dependency under examination.
+4. Search eligible releases using binary search by default or an oldest-first
+   scan with `--exhaustive`, pinning only the dependency under examination.
    Other in-scope direct dependencies can resolve within expanded search
    windows; transitive dependencies resolve normally.
-5. Recheck each successful candidate against the final proposed requirements,
+5. Recheck each selected floor witness against the final proposed requirements,
    and check that the proposed manifest builds without candidate pins.
 
-Compilation, rather than API-name matching or assumptions about monotonic
-compatibility, is the authority. Normal and build dependencies are included.
+Actual compilation verifies each candidate; binary search assumes monotonic
+compatibility when deciding which other releases to skip.
+Normal and build dependencies are included.
 Optional and target-specific dependencies not built in the selected
 configuration are explicitly reported as inactive. Test/example/benchmark
 requirements do not establish the published library's floor.
@@ -60,6 +62,32 @@ bar = "2.1.0"
 These are independently witnessed lower bounds. They need not occur in the
 same lockfile: Cargo enforces `foo`'s declared constraints. The report retains
 the actual compiled package versions for each successful probe.
+
+## Search strategies
+
+The default binary search tests the oldest eligible release first. If it works,
+no earlier candidate needs checking. Otherwise, the search confirms a passing
+upper endpoint, preferring the version resolved by the baseline build, and
+bisects the remaining interval. Each candidate is probed at most once during
+discovery; final witness verification remains a separate build.
+
+The two releases immediately below the located boundary are also checked.
+If sampled results demonstrate non-monotonic compatibility, the search falls
+back to an exhaustive check below the best passing candidate. It also falls
+back to an oldest-first scan when no passing upper endpoint can be established.
+These fallbacks are announced in progress output.
+
+Normally this uses logarithmically many probes, plus a small number of endpoint
+and neighbor checks. A fallback can still require a linear scan. Untested
+regressions can hide earlier working releases even when sampled results look
+monotonic; neighbor checks do not prove minimality.
+
+`--exhaustive` checks every eligible release before the first passing candidate
+in ascending version order. It does not check every newer release, every
+dependency combination, or runtime behavior.
+
+Both strategies require an actual passing build for the selected floor and
+retain the same final requirements/witness validation and opt-in edit behavior.
 
 ## Safety and limitations
 
@@ -98,9 +126,33 @@ the actual compiled package versions for each successful probe.
 
 ## Machine-readable reports
 
+Human-readable dependency rows show only the original and proposed requirements.
+Exact verified versions and per-dependency search evidence remain available in
+JSON output rather than repeated on every row.
+
 JSON output (`--format json`) is one object on stdout, with `schema_version = 1`,
 the selected configuration, dependency statuses, proposed requirements, probe
 outcomes/diagnostics, actual compiled package versions, and whether edits were
-applied. Diagnostics go to stderr. Unsupported/unverified entries make the report
+applied. `configuration.search_strategy` records `binary` or `exhaustive`.
+Each dependency's `earlier_candidates_checked` is `true` when every earlier
+eligible release was probed and failed, `false` when some were skipped, and
+`null` when no floor was verified. This describes the tested graphs, not every
+conceivable resolution for each version.
+Progress and diagnostics go to stderr. Unsupported/unverified entries make the report
 `incomplete`; failed baselines, invalid input, and failed final verification exit
 nonzero without a successful discovery report.
+
+## Progress reporting
+
+Preparation, dependency resolution, compilation, candidate results, and final
+verification are reported live on stderr. Candidate numbers are positions within
+each dependency's eligible release list and can jump during binary search;
+they are not completion percentages or estimates of total run time.
+Long operations emit elapsed-time updates
+every ten seconds even when Cargo produces no output; these updates mean the
+operation has not returned, not that useful work or completion is guaranteed.
+Cargo diagnostics remain captured for failure reporting and JSON probe evidence.
+
+`--quiet` (`-q`) suppresses progress and elapsed-time updates only. Warnings,
+errors, and the final human or JSON report remain enabled. Report stdout is
+unchanged, so it can still be redirected or consumed by another program.
