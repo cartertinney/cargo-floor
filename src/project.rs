@@ -1,4 +1,5 @@
 use crate::Args;
+use crate::progress::Progress;
 use crate::registry::CargoConfig;
 use anyhow::{Context, Result, bail, ensure};
 use cargo_metadata::{DependencyKind, Message, Metadata, Package, Target};
@@ -328,12 +329,15 @@ impl Project {
         Ok(())
     }
 
-    pub fn build(&self, args: &Args) -> Result<Build> {
+    pub fn build(&self, args: &Args, progress: &Progress, label: &str) -> Result<Build> {
         let mut metadata_command = self.command("metadata", args);
         metadata_command.args(["--format-version", "1"]);
-        let output = metadata_command
-            .output()
-            .context("run Cargo dependency resolution")?;
+        let output = {
+            let _activity = progress.activity(format_args!("Resolving {label}"));
+            metadata_command
+                .output()
+                .context("run Cargo dependency resolution")?
+        };
         if !output.status.success() {
             return Ok(Build {
                 outcome: Outcome::ResolutionFailed,
@@ -357,9 +361,12 @@ impl Project {
         if let Some(target) = &args.target {
             command.args(["--target", target]);
         }
-        let output = command
-            .output()
-            .context("compile the isolated library probe")?;
+        let output = {
+            let _activity = progress.activity(format_args!("Compiling {label}"));
+            command
+                .output()
+                .context("compile the isolated library probe")?
+        };
         let mut compiled = BTreeSet::new();
         let mut messages = String::new();
         for message in Message::parse_stream(output.stdout.as_slice()) {

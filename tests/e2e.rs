@@ -58,7 +58,7 @@ fn raises_understated_floor_from_current_library_source() {
 }
 
 #[test]
-fn finds_oldest_passing_release_despite_later_compile_regression() {
+fn exhaustive_search_finds_oldest_passing_release_despite_later_compile_regression() {
     let fixture = Fixture::new("nonmonotonic");
     for (version, source) in [
         ("1.0.0", OLD_API),
@@ -81,7 +81,7 @@ fn finds_oldest_passing_release_despite_later_compile_regression() {
         "pub fn value() -> u32 { api::needed() }\n",
     );
     fixture.check(&[]);
-    let report = fixture.floor(&[]);
+    let report = fixture.floor(&["--exhaustive"]);
     let api = verified(&report, "api", "api", "1.4", "1.1.0");
     probe(api, "1.0.0", "build_failed");
 }

@@ -1,12 +1,16 @@
+mod progress;
 mod project;
 mod registry;
 mod requirements;
+mod search;
 
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Parser, ValueEnum};
+use progress::Progress;
 use project::{Build, Outcome, Project, ResolvedPackage};
 use registry::{Registry, ReleaseIndex};
 use requirements::SearchWindow;
+use search::Strategy;
 use semver::Version;
 use serde::Serialize;
 use std::io::{self, Write};
@@ -34,6 +38,12 @@ struct Args {
     target: Option<String>,
     #[arg(long, value_enum, default_value_t = Format::Human)]
     format: Format,
+    /// Suppress progress messages, but keep warnings, errors, and the final report.
+    #[arg(short = 'q', long)]
+    quiet: bool,
+    /// Check every earlier eligible release instead of assuming monotonic compatibility.
+    #[arg(long)]
+    exhaustive: bool,
     /// Apply verified requirement changes; leave the original lockfile unchanged.
     #[arg(long)]
     apply: bool,
@@ -67,6 +77,7 @@ struct Configuration {
     target: String,
     host: String,
     rustc: String,
+    search_strategy: Strategy,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize)]
@@ -87,6 +98,7 @@ struct DependencyReport {
     original_requirement: String,
     proposed_requirement: String,
     lowest_verified: Option<Version>,
+    earlier_candidates_checked: Option<bool>,
     status: Status,
     reason: Option<String>,
     probes: Vec<Probe>,
@@ -113,8 +125,17 @@ fn main() {
 }
 
 fn run(args: &Args) -> Result<()> {
-    let project = Project::load(args)?;
-    let baseline = project.build(args)?;
+    let progress = Progress::new(args.quiet);
+    let strategy = if args.exhaustive {
+        Strategy::Exhaustive
+    } else {
+        Strategy::Binary
+    };
+    let project = {
+        let _activity = progress.activity(format_args!("Preparing isolated library workspace"));
+        Project::load(args)?
+    };
+    let baseline = project.build(args, &progress, "baseline library")?;
     ensure!(
         baseline.outcome == Outcome::Passed,
         "baseline library build failed; fix the current configuration before discovering floors:\n{}",
@@ -135,6 +156,7 @@ fn run(args: &Args) -> Result<()> {
             original_requirement: dependency.original_requirement.clone(),
             proposed_requirement: dependency.original_requirement.clone(),
             lowest_verified: None,
+            earlier_candidates_checked: None,
             status: Status::Unverified,
             reason: None,
             probes: Vec::new(),
@@ -201,34 +223,74 @@ fn run(args: &Args) -> Result<()> {
         let (Some(window), Some(registry)) = (&windows[index], &registries[index]) else {
             continue;
         };
-        let candidates = releases
-            .versions(registry, &dependency.metadata.name, project.config.offline)?
-            .into_iter()
-            .filter(|version| window.contains(version));
-        for candidate in candidates {
-            let mut requirements = expanded.clone();
-            requirements[index] = Some(format!("={candidate}"));
-            project.write_requirements(&requirements)?;
-            let build = project.build(args)?;
-            if build.outcome == Outcome::Passed {
-                verify_candidate(&project, &build, index, &candidate)?;
-            }
-            let passed = build.outcome == Outcome::Passed;
-            reports[index].probes.push(Probe {
-                version: candidate.clone(),
-                outcome: build.outcome,
-                diagnostic: build.diagnostic,
-                resolved: build.resolved,
-            });
-            if passed {
-                reports[index].status = Status::Verified;
-                reports[index].lowest_verified = Some(candidate.clone());
-                reports[index].proposed_requirement = window.proposed(&candidate);
-                break;
-            }
+        let candidates: Vec<_> = {
+            let _activity =
+                progress.activity(format_args!("Fetching releases for {}", dependency.name));
+            releases.versions(registry, &dependency.metadata.name, project.config.offline)?
         }
-        if reports[index].status != Status::Verified {
-            reports[index].reason = Some(
+        .into_iter()
+        .filter(|version| window.contains(version))
+        .collect();
+        let candidate_count = candidates.len();
+        progress.message(format_args!(
+            "Searching {} with {} search ({candidate_count} eligible candidates)",
+            dependency.name,
+            strategy.name()
+        ));
+        let anchor = project
+            .active_package(&baseline, dependency)
+            .and_then(|resolved| candidates.binary_search(&resolved.version).ok());
+        let report = &mut reports[index];
+        let result =
+            search::find_floor(candidate_count, anchor, strategy, &progress, |position| {
+                let candidate = &candidates[position];
+                progress.message(format_args!(
+                    "Testing {} {candidate} (candidate {}/{candidate_count})",
+                    dependency.name,
+                    position + 1
+                ));
+                let mut requirements = expanded.clone();
+                requirements[index] = Some(format!("={candidate}"));
+                project.write_requirements(&requirements)?;
+                let label = format!("{} {candidate}", dependency.name);
+                let build = project.build(args, &progress, &label)?;
+                if build.outcome == Outcome::Passed {
+                    verify_candidate(&project, &build, index, candidate)?;
+                }
+                let passed = build.outcome == Outcome::Passed;
+                match build.outcome {
+                    Outcome::Passed => {
+                        progress.message(format_args!("{} {candidate} verified", dependency.name));
+                    }
+                    Outcome::ResolutionFailed => {
+                        progress.message(format_args!(
+                            "{} {candidate} rejected: dependency resolution failed",
+                            dependency.name
+                        ));
+                    }
+                    Outcome::BuildFailed => {
+                        progress.message(format_args!(
+                            "{} {candidate} rejected: build failed",
+                            dependency.name
+                        ));
+                    }
+                }
+                report.probes.push(Probe {
+                    version: candidate.clone(),
+                    outcome: build.outcome,
+                    diagnostic: build.diagnostic,
+                    resolved: build.resolved,
+                });
+                Ok(passed)
+            })?;
+        if let Some(floor) = result.floor {
+            let candidate = &candidates[floor];
+            report.status = Status::Verified;
+            report.lowest_verified = Some(candidate.clone());
+            report.earlier_candidates_checked = Some(result.earlier_candidates_checked);
+            report.proposed_requirement = window.proposed(candidate);
+        } else {
+            report.reason = Some(
                 "no stable, non-yanked release in the search window passed; inspect probe diagnostics".to_owned(),
             );
         }
@@ -246,7 +308,8 @@ fn run(args: &Args) -> Result<()> {
         let mut requirements = proposed.clone();
         requirements[index] = Some(format!("={version}"));
         project.write_requirements(&requirements)?;
-        let build = project.build(args)?;
+        let label = format!("final witness for {} {version}", report.name);
+        let build = project.build(args, &progress, &label)?;
         ensure!(
             build.outcome == Outcome::Passed,
             "final requirements invalidate the {} {version} witness; no manifest was changed:\n{}",
@@ -257,12 +320,12 @@ fn run(args: &Args) -> Result<()> {
         let witness = report
             .probes
             .iter_mut()
-            .find(|probe| probe.outcome == Outcome::Passed)
+            .find(|probe| probe.outcome == Outcome::Passed && probe.version == *version)
             .context("missing successful candidate witness")?;
         witness.resolved = build.resolved;
     }
     project.write_requirements(&proposed)?;
-    let final_build = project.build(args)?;
+    let final_build = project.build(args, &progress, "final proposed requirements")?;
     ensure!(
         final_build.outcome == Outcome::Passed,
         "proposed requirements do not build together; no manifest was changed:\n{}",
@@ -308,6 +371,7 @@ fn run(args: &Args) -> Result<()> {
             target: project.target.clone(),
             host: project.host.clone(),
             rustc: project.rustc_version.clone(),
+            search_strategy: strategy,
         },
         dependencies: reports,
         baseline: baseline.resolved,
@@ -357,16 +421,20 @@ fn print_report(report: &Report, format: Format) -> Result<()> {
                 "{}; target {}",
                 report.configuration.rustc, report.configuration.target
             )?;
+            writeln!(
+                stdout,
+                "Search: {}",
+                report.configuration.search_strategy.name()
+            )?;
             for dependency in &report.dependencies {
-                if let Some(version) = &dependency.lowest_verified {
+                if dependency.lowest_verified.is_some() {
                     writeln!(
                         stdout,
-                        "  {} [{}]: {} -> {} (lowest verified {})",
+                        "  {} [{}]: {} -> {}",
                         dependency.name,
                         dependency.kind,
                         dependency.original_requirement,
-                        dependency.proposed_requirement,
-                        version
+                        dependency.proposed_requirement
                     )?;
                 } else {
                     writeln!(
@@ -377,6 +445,17 @@ fn print_report(report: &Report, format: Format) -> Result<()> {
                         dependency.reason.as_deref().unwrap_or("unverified")
                     )?;
                 }
+            }
+            if report
+                .dependencies
+                .iter()
+                .any(|dependency| dependency.earlier_candidates_checked == Some(false))
+            {
+                writeln!(
+                    stdout,
+                    "\nBinary search assumes monotonic compatibility and may miss earlier working releases. \
+                     Use --exhaustive to check every earlier eligible candidate."
+                )?;
             }
             writeln!(
                 stdout,
