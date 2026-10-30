@@ -2,7 +2,7 @@
 
 ## Source installation
 
-Until the first crates.io publication, install from a checkout:
+Build and install from a source checkout:
 
 ```sh
 git clone https://github.com/cartertinney/cargo-floor.git

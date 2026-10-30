@@ -10,13 +10,9 @@ can keep compatible older versions.
 
 ## Install
 
-The first crates.io release has not been published yet. After publication:
-
 ```sh
 cargo install cargo-floor --locked
 ```
-
-Until then, [install from a source checkout](doc/development.md#source-installation).
 
 ## Usage
 

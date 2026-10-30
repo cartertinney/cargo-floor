@@ -1,9 +1,8 @@
 # Manual release checklist
 
-The first crates.io publication is pending. These are required maintainer gates,
-not release automation or a claim that license, metadata, or CI work is already
-complete. Run commands from the repository root against the same clean commit
-intended for publication; resolve missing or failing gates before proceeding.
+Complete these manual maintainer gates for each release. Run commands from the
+repository root against the same clean commit intended for publication; resolve
+missing or failing gates before proceeding.
 
 ## Review and validation
 
@@ -81,8 +80,6 @@ intended for publication; resolve missing or failing gates before proceeding.
   cargo publish --locked --registry crates-io
   ```
 
-- [ ] After the published version is visible in the crates.io index, verify the
-  listing and `cargo install cargo-floor --locked` in a clean environment, then
-  check `cargo floor --help`. Only then remove the pending-publication notice in
-  the [README](../README.md). Do not test this registry install before the first
-  publication.
+- [ ] Verify the crates.io listing and the [README installation instructions](../README.md)
+  in a clean environment: `cargo install cargo-floor --locked`, then
+  `cargo floor --help`.
