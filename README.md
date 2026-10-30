@@ -11,7 +11,7 @@ can keep compatible older versions.
 ## Install
 
 ```sh
-cargo install --path .
+cargo install cargo-floor --locked
 ```
 
 ## Usage
@@ -71,3 +71,4 @@ trusted projects: Cargo can execute build scripts and procedural macros.
 
 - [Behavior, design, and limitations](doc/design.md)
 - [Development and scenario coverage](doc/development.md)
+- [Manual release checklist](doc/release.md)

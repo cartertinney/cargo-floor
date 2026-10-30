@@ -1,11 +1,28 @@
 # Development
 
-## Checks
+## Source installation
+
+Build and install from a source checkout:
 
 ```sh
-cargo test --tests
+git clone https://github.com/cartertinney/cargo-floor.git
+cd cargo-floor
+cargo install --path . --locked
+cargo floor --help
+```
+
+For an existing checkout, run the install command from the repository root.
+Ensure Cargo's installation directory (normally `$HOME/.cargo/bin`) is on `PATH`.
+
+## Checks
+
+Run from the repository root:
+
+```sh
+cargo check --locked
+cargo test --locked --tests
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo clippy --locked --all-targets -- -D warnings
 ```
 
 ## Continuous integration
@@ -36,3 +53,9 @@ network access. There are no unit tests.
   releases, corrupt archives, and malformed or unavailable sparse indexes.
 - Workspace selection/isolation, configuration precedence, byte-preserving
   edits, synchronized concurrent manifest changes, and filesystem exclusions.
+
+## Releases
+
+Follow the [manual release checklist](release.md) before publishing. It includes
+license/metadata review, Rust version and platform validation, and packaged
+installation checks.
