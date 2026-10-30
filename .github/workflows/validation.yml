@@ -1,0 +1,101 @@
+name: Build and release validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  validate:
+    name: Rust ${{ matrix.toolchain }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            toolchain: stable
+            lint: true
+          - os: macos-latest
+            toolchain: stable
+          - os: windows-latest
+            toolchain: stable
+          - os: ubuntu-latest
+            toolchain: 1.85.0
+    env:
+      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --no-self-update
+          rustc --version --verbose
+          cargo --version
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          cache-bin: false
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Install lint components
+        if: matrix.lint
+        run: rustup component add rustfmt clippy --toolchain "$RUSTUP_TOOLCHAIN"
+
+      - name: Check formatting
+        if: matrix.lint
+        run: cargo fmt --all -- --check
+
+      - name: Check Clippy without warnings
+        if: matrix.lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Run integration tests
+        run: cargo test --locked --tests
+
+      - name: Verify packaged crate
+        run: |
+          rm -rf target/package
+          cargo package --locked
+
+      - name: Install and smoke-test packaged crate
+        run: |
+          shopt -s nullglob
+          archives=(target/package/*.crate)
+          test "${#archives[@]}" -eq 1
+
+          smoke="$PWD/target/package-smoke"
+          rm -rf "$smoke"
+          mkdir -p "$smoke/source"
+          tar -xzf "${archives[0]}" -C "$smoke/source"
+          sources=("$smoke/source"/*)
+          test "${#sources[@]}" -eq 1
+          cargo install --locked --path "${sources[0]}" \
+            --root "$smoke/install" --target-dir "$smoke/build"
+
+          "$smoke/install/bin/cargo-floor" --version
+          "$smoke/install/bin/cargo-floor" floor --help
+          cargo new --quiet --lib --vcs none --name package_smoke "$smoke/project"
+          PATH="$smoke/install/bin:$PATH" CARGO_NET_OFFLINE=true \
+            cargo floor --manifest-path "$smoke/project/Cargo.toml" --format json
