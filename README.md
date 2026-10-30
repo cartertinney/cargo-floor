@@ -10,9 +10,13 @@ can keep compatible older versions.
 
 ## Install
 
+The first crates.io release has not been published yet. After publication:
+
 ```sh
-cargo install --path .
+cargo install cargo-floor --locked
 ```
+
+Until then, [install from a source checkout](doc/development.md#source-installation).
 
 ## Usage
 
@@ -60,3 +64,4 @@ trusted projects: Cargo can execute build scripts and procedural macros.
 
 - [Behavior, design, and limitations](doc/design.md)
 - [Development and scenario coverage](doc/development.md)
+- [Manual release checklist](doc/release.md)
