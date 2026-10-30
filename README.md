@@ -36,10 +36,11 @@ Run separately for the configurations you support; `--all-features` selects a
 union of features, not every combination. Use `--package` for an ambiguous
 workspace and `--target` when Cargo configuration defines multiple targets.
 
-Progress is written to stderr as each phase and candidate starts. Operations
-lasting more than ten seconds show elapsed-time updates; these indicate the
-operation is still running, not a completion estimate. Use `--quiet` to suppress
-progress without hiding warnings, errors, or the final report.
+Progress uses one compact dotted line per searched package on stderr. Dots mark
+completed probes and ongoing activity during long operations, not a completion
+percentage. Use `--verbose` (`-v`) for candidate/build details and elapsed-time
+updates, or `--quiet` (`-q`) to hide progress. Warnings, errors, and the final
+report remain visible.
 
 ## Apply changes
 

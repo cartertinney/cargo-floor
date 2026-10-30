@@ -41,6 +41,9 @@ struct Args {
     /// Suppress progress messages, but keep warnings, errors, and the final report.
     #[arg(short = 'q', long)]
     quiet: bool,
+    /// Show detailed search, candidate, and build-phase progress.
+    #[arg(short = 'v', long, conflicts_with = "quiet")]
+    verbose: bool,
     /// Check every earlier eligible release instead of assuming monotonic compatibility.
     #[arg(long)]
     exhaustive: bool,
@@ -125,16 +128,22 @@ fn main() {
 }
 
 fn run(args: &Args) -> Result<()> {
-    let progress = Progress::new(args.quiet);
+    let progress = Progress::new(args.quiet, args.verbose);
     let strategy = if args.exhaustive {
         Strategy::Exhaustive
     } else {
         Strategy::Binary
     };
     let project = {
-        let _activity = progress.activity(format_args!("Preparing isolated library workspace"));
-        Project::load(args)?
+        let task = progress.task(format_args!("Preparing workspace"));
+        let project = {
+            let _activity = progress.activity(format_args!("Preparing isolated library workspace"));
+            Project::load(args)?
+        };
+        task.finish(format_args!("ready"));
+        project
     };
+    let baseline_task = progress.task(format_args!("Checking baseline"));
     let baseline = project.build(args, &progress, "baseline library")?;
     ensure!(
         baseline.outcome == Outcome::Passed,
@@ -144,6 +153,7 @@ fn run(args: &Args) -> Result<()> {
             .as_deref()
             .unwrap_or("Cargo did not provide a diagnostic")
     );
+    baseline_task.finish(format_args!("passed"));
     let mut reports = Vec::new();
     let mut windows = Vec::new();
     let mut registries = Vec::new();
@@ -223,6 +233,7 @@ fn run(args: &Args) -> Result<()> {
         let (Some(window), Some(registry)) = (&windows[index], &registries[index]) else {
             continue;
         };
+        let task = progress.task(format_args!("{} [{}]", dependency.name, dependency.kind()));
         let candidates: Vec<_> = {
             let _activity =
                 progress.activity(format_args!("Fetching releases for {}", dependency.name));
@@ -281,18 +292,23 @@ fn run(args: &Args) -> Result<()> {
                     diagnostic: build.diagnostic,
                     resolved: build.resolved,
                 });
+                task.advance();
                 Ok(passed)
             })?;
+        let count = report.probes.len();
+        let unit = if count == 1 { "probe" } else { "probes" };
         if let Some(floor) = result.floor {
             let candidate = &candidates[floor];
             report.status = Status::Verified;
             report.lowest_verified = Some(candidate.clone());
             report.earlier_candidates_checked = Some(result.earlier_candidates_checked);
             report.proposed_requirement = window.proposed(candidate);
+            task.finish(format_args!("{candidate} ({count} {unit})"));
         } else {
             report.reason = Some(
                 "no stable, non-yanked release in the search window passed; inspect probe diagnostics".to_owned(),
             );
+            task.finish(format_args!("unverified ({count} {unit})"));
         }
     }
     let proposed: Vec<_> = reports
@@ -301,6 +317,7 @@ fn run(args: &Args) -> Result<()> {
             (report.status == Status::Verified).then(|| report.proposed_requirement.clone())
         })
         .collect();
+    let verification = progress.task(format_args!("Final verification"));
     for (index, report) in reports.iter_mut().enumerate() {
         let Some(version) = &report.lowest_verified else {
             continue;
@@ -323,6 +340,7 @@ fn run(args: &Args) -> Result<()> {
             .find(|probe| probe.outcome == Outcome::Passed && probe.version == *version)
             .context("missing successful candidate witness")?;
         witness.resolved = build.resolved;
+        verification.advance();
     }
     project.write_requirements(&proposed)?;
     let final_build = project.build(args, &progress, "final proposed requirements")?;
@@ -334,6 +352,7 @@ fn run(args: &Args) -> Result<()> {
             .as_deref()
             .unwrap_or("no Cargo diagnostic")
     );
+    verification.finish(format_args!("passed"));
     if args.apply
         && reports
             .iter()
