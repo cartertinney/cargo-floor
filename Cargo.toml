@@ -5,6 +5,10 @@ edition = "2024"
 rust-version = "1.85"
 description = "Discover source-driven minimum dependency versions"
 license = "MIT OR Apache-2.0"
+repository = "https://github.com/cartertinney/cargo-floor"
+readme = "README.md"
+keywords = ["cargo", "dependencies", "minimum-versions", "semver"]
+categories = ["development-tools::cargo-plugins"]
 
 [dependencies]
 anyhow = "1"
