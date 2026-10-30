@@ -1,0 +1,24 @@
+[package]
+name = "cargo-floor"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Discover source-driven minimum dependency versions"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+cargo-platform = "0.1"
+cargo_metadata = "0.19"
+clap = { version = "4", features = ["derive"] }
+semver = { version = "1", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+toml_edit = "0.22"
+ureq = "3"
+
+[dev-dependencies]
+flate2 = "1"
+sha2 = "0.10"
+tar = "0.4"
