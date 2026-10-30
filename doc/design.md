@@ -151,10 +151,10 @@ adds another activity dot every ten seconds, even if Cargo is silent.
 For example:
 
 ```text
-cargo-floor: Preparing workspace ready
-cargo-floor: Checking baseline passed
-cargo-floor: api [normal]... 1.2.0 (3 probes)
-cargo-floor: Final verification. passed
+Preparing workspace ready
+Checking baseline passed
+api [normal]... 1.2.0 (3 probes)
+Final verification. passed
 ```
 
 The final probe count excludes heartbeat dots and final witness verification.
@@ -163,7 +163,8 @@ Incomplete searches end with `unverified`; a failed operation closes its line
 with `failed` before the error diagnostics, rather than looking successful.
 
 `--verbose` (`-v`) enables detailed preparation, resolution, compilation,
-candidate results, and fallback messages. Candidate numbers are positions
+candidate results, and fallback messages, retaining the `cargo-floor:` log
+prefix that compact progress omits. Candidate numbers are positions
 within the eligible release list and can jump during binary search.
 Long verbose operations show elapsed-time updates every ten seconds. These
 updates indicate that an operation has not returned, not that useful work or

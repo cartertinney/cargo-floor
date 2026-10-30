@@ -97,10 +97,11 @@ fn gated_run(
 fn human_progress_arrives_before_the_baseline_build_finishes() {
     let fixture = fixture("compact-live-baseline");
     fixture.write("build.rs", BuildGate::script());
-    let output = gated_run(&fixture, &["floor"], "cargo-floor: Checking baseline", None);
+    let output = gated_run(&fixture, &["floor"], "Checking baseline", None);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Dependency floors for sample"), "{stdout}");
     assert!(!stdout.contains("Compiling baseline library"), "{stdout}");
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("cargo-floor:"));
 }
 
 #[test]
@@ -110,8 +111,8 @@ fn compact_long_builds_emit_live_dots_without_polluting_json() {
     let output = gated_run(
         &fixture,
         &["floor", "--format", "json"],
-        "cargo-floor: Checking baseline",
-        Some("cargo-floor: Checking baseline."),
+        "Checking baseline",
+        Some("Checking baseline."),
     );
     verified(&parse_report(&output), "api", "api", "1.8", "1.2.0");
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -133,6 +134,9 @@ fn verbose_long_builds_keep_phase_details_and_elapsed_time() {
     );
     verified(&parse_report(&output), "api", "api", "1.8", "1.2.0");
     assert!(String::from_utf8_lossy(&output.stderr).contains("s elapsed"));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("cargo-floor: Compiling baseline library")
+    );
 }
 
 #[test]
@@ -158,7 +162,7 @@ fn default_package_progress_is_compact_live_and_keeps_json_stdout_clean() {
     let output = gated_run(
         &fixture,
         &["floor", "--format", "json"],
-        "cargo-floor: api [normal]",
+        "api [normal]",
         None,
     );
     let report = parse_report(&output);
@@ -166,7 +170,7 @@ fn default_package_progress_is_compact_live_and_keeps_json_stdout_clean() {
     verified(&report, "helper", "helper", "1", "1.0.0");
     let stderr = String::from_utf8_lossy(&output.stderr);
     for (name, version, count) in [("api", "1.2.0", 3), ("helper", "1.0.0", 1)] {
-        let prefix = format!("cargo-floor: {name} [normal]");
+        let prefix = format!("{name} [normal]");
         let rows: Vec<_> = stderr
             .lines()
             .filter(|line| line.starts_with(&prefix))
@@ -193,6 +197,7 @@ fn default_package_progress_is_compact_live_and_keeps_json_stdout_clean() {
         !stderr.contains('\r') && !stderr.contains('\u{1b}'),
         "{stderr}"
     );
+    assert!(!stderr.contains("cargo-floor:"), "{stderr}");
 }
 
 #[test]
@@ -231,7 +236,7 @@ fn compact_baseline_failures_end_the_progress_row_before_the_error() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let baseline = stderr
         .lines()
-        .find(|line| line.starts_with("cargo-floor: Checking baseline"))
+        .find(|line| line.starts_with("Checking baseline"))
         .unwrap();
     assert!(baseline.ends_with(" failed"), "{stderr}");
     assert!(

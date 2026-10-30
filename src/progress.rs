@@ -64,7 +64,7 @@ impl Progress {
         let activity = match self.mode {
             Mode::Quiet => Activity::default(),
             Mode::Compact => {
-                eprint!("cargo-floor: {label}");
+                eprint!("{label}");
                 Activity::start(|_| eprint!("."))
             }
             Mode::Verbose => {
