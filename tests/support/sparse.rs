@@ -141,10 +141,11 @@ impl SparseRegistry {
     /// Cargo's own client still receives valid records. Other clients receive
     /// the fault, without depending on cargo-floor's particular User-Agent.
     pub fn fault_enumeration(&self, name: &str, fault: IndexFault) {
+        let path = index_path(name).to_string_lossy().replace('\\', "/");
         self.faults
             .lock()
             .unwrap()
-            .insert(format!("/index/{}", index_path(name).display()), fault);
+            .insert(format!("/index/{path}"), fault);
     }
 
     pub fn requests(&self) -> Vec<(String, String)> {

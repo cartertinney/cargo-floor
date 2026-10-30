@@ -961,7 +961,11 @@ fn documented_special_file_rejection_does_not_read_or_replace_a_unix_socket() {
         "pub fn value() -> u32 { api::needed() }\n",
     );
     fixture.check(&[]);
-    let _socket = std::os::unix::net::UnixListener::bind(fixture.project.join("s")).unwrap();
+    // A relative address avoids Unix socket path limits in long checkout paths.
+    let socket_path = fixture.project.join("s");
+    let cwd = std::env::current_dir().unwrap();
+    let _socket =
+        std::os::unix::net::UnixListener::bind(socket_path.strip_prefix(cwd).unwrap()).unwrap();
     let snapshot = fixture.snapshot(&["Cargo.toml", "Cargo.lock", "src/lib.rs"]);
     let output = fixture.floor_raw(&["floor", "--format", "json", "--apply"]);
     assert_failure(&output, "special files are documented as unsupported");
