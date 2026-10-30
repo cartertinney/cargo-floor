@@ -189,7 +189,7 @@ fn sampled_regressions_trigger_an_exhaustive_check_below_the_found_candidate() {
         "binary-observed-regression",
         &[OLD, NEW, BROKEN, NEW, BROKEN, NEW, NEW, NEW, NEW],
     );
-    let output = fixture.floor_raw(&["floor", "--format", "json"]);
+    let output = fixture.floor_raw(&["floor", "--format", "json", "--verbose"]);
     let report = parse_report(&output);
     let api = verified(&report, "api", "api", "1.8", "1.1.0");
     assert_eq!(api["earlier_candidates_checked"], true, "{api:#}");
@@ -234,7 +234,7 @@ fn failed_binary_endpoints_do_not_claim_that_untested_older_versions_all_failed(
     fixture.yank("api", "1.4.0");
     fixture.check(&[]);
     let snapshot = fixture.snapshot(&["Cargo.toml", "Cargo.lock", "src/lib.rs"]);
-    let output = fixture.floor_raw(&["floor", "--format", "json", "--apply"]);
+    let output = fixture.floor_raw(&["floor", "--format", "json", "--apply", "--verbose"]);
     assert_failure(&output, "a broken final resolution must never be applied");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(

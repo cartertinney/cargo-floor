@@ -75,7 +75,7 @@ The two releases immediately below the located boundary are also checked.
 If sampled results demonstrate non-monotonic compatibility, the search falls
 back to an exhaustive check below the best passing candidate. It also falls
 back to an oldest-first scan when no passing upper endpoint can be established.
-These fallbacks are announced in progress output.
+These fallbacks are described in verbose progress output.
 
 Normally this uses logarithmically many probes, plus a small number of endpoint
 and neighbor checks. A fallback can still require a linear scan. Untested
@@ -144,15 +144,33 @@ nonzero without a successful discovery report.
 
 ## Progress reporting
 
-Preparation, dependency resolution, compilation, candidate results, and final
-verification are reported live on stderr. Candidate numbers are positions within
-each dependency's eligible release list and can jump during binary search;
-they are not completion percentages or estimates of total run time.
-Long operations emit elapsed-time updates
-every ten seconds even when Cargo produces no output; these updates mean the
-operation has not returned, not that useful work or completion is guaranteed.
-Cargo diagnostics remain captured for failure reporting and JSON probe evidence.
+Default progress is compact ASCII text on stderr: short preparation, baseline,
+and final-verification status lines, plus one dotted line per searched
+dependency. Each completed candidate probe adds a dot; a long-running operation
+adds another activity dot every ten seconds, even if Cargo is silent.
+For example:
 
-`--quiet` (`-q`) suppresses progress and elapsed-time updates only. Warnings,
-errors, and the final human or JSON report remain enabled. Report stdout is
-unchanged, so it can still be redirected or consumed by another program.
+```text
+cargo-floor: Preparing workspace ready
+cargo-floor: Checking baseline passed
+cargo-floor: api [normal]... 1.2.0 (3 probes)
+cargo-floor: Final verification. passed
+```
+
+The final probe count excludes heartbeat dots and final witness verification.
+Dots indicate activity, not a percentage or an estimate of remaining work.
+Incomplete searches end with `unverified`; a failed operation closes its line
+with `failed` before the error diagnostics, rather than looking successful.
+
+`--verbose` (`-v`) enables detailed preparation, resolution, compilation,
+candidate results, and fallback messages. Candidate numbers are positions
+within the eligible release list and can jump during binary search.
+Long verbose operations show elapsed-time updates every ten seconds. These
+updates indicate that an operation has not returned, not that useful work or
+completion is guaranteed. Cargo diagnostics remain captured for failure
+reporting and JSON probe evidence.
+
+`--quiet` (`-q`) suppresses progress only. Warnings, errors, and the final human
+or JSON report remain enabled. Quiet and verbose modes are mutually exclusive.
+All modes leave report stdout unchanged, so it can still be redirected or
+consumed by another program.
